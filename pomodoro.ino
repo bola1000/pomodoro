@@ -1,16 +1,24 @@
-#include "InternetButton/InternetButton.h"
+#include "InternetButton.h"
 #include "time.h"
 
-#define POMODORO_MILLIS(25 * 60 * 1000)
+#define POMODORO_TIME 1
 
 InternetButton button = InternetButton();
 int numberOfButtons = 11;
 int ledDelayInMillis = 100;
+unsigned long pomodoroMillis = POMODORO_TIME * 60 * 1000;
+unsigned long lastUpdate = millis();
 int ledIndex = 0;
-unsignedLong lastUpdate = millis();
 
-enum State { None, Active, ShortBreak, LongBreak, Cancelled, Complete };
-State previousState, state = None;
+enum PomodoroState { None, Active, ShortBreak, LongBreak, Cancelled, Complete };
+PomodoroState previousState, pomodoroState = None;
+
+// Log message to cloud, message is a printf-formatted string
+void debug(String message, int value) {
+    char msg [50];
+    sprintf(msg, message.c_str(), value);
+    Particle.publish("DEBUG", msg);
+}
 
 void setup() {
   button.begin();
@@ -18,35 +26,56 @@ void setup() {
 
 void updateActivePomodoro() {
   if(previousState != Active) {
-    lastUpate = millis();
+    lastUpdate = millis();
   }
 
-  if(millis() - lastUpdate > POMODORO_MILLIS) {
+  unsigned long deltaTime = millis() - lastUpdate;
+  if(deltaTime > pomodoroMillis) {
+    debug("Completing pomodoro. deltaTime = %d", deltaTime);
     completePomodoro();
+    return;
+  }
+
+  // calculate the amount of leds that should be lit.
+  int percentageComplete = deltaTime / pomodoroMillis;
+  int ledsToLight = numberOfButtons * percentageComplete;
+
+  for(int i = 0; i <= ledsToLight; i++) {
+    button.ledOn(i, 0, 255, 0);
   }
 }
 
 void completePomodoro() {
-  setState(Complete);
+  previousState = pomodoroState;
+  pomodoroState = Complete;
+
+  for(int i = 0; i < numberOfButtons; i++) {
+    button.ledOff(i);
+  }
 }
 
-void setState(State newState) {
-  previousState = state;
-  state = newState;
-}
-
-
-void loops() {
+void loop() {
   if(button.buttonOn(1)) {
-    state = Active;
+    button.allLedsOff();
+    pomodoroState = Active;
   }
-  if(buton.buttonOn(2)) {
-    State = ShortBreak;
+  if(button.buttonOn(2)) {
+    // State = ShortBreak;
+    pomodoroState = None;
   }
-  if(buton.buttonOn(3)) {
-    State = LongBreak;
+  if(button.buttonOn(3)) {
+    pomodoroState = LongBreak;
   }
-  if(buton.buttonOn(4)) {
-    State = Cancelled;
+  if(button.buttonOn(4)) {
+    pomodoroState = Cancelled;
+  }
+
+  if(pomodoroState == Active) {
+    updateActivePomodoro();
+    button.ledOn(6, 255, 0, 0);
+  }
+
+  if(pomodoroState == None) {
+    button.allLedsOn(0, 0, 255);
   }
 }
